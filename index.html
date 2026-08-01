@@ -180,7 +180,13 @@ async function sendOrder(){
   if(!validateCheckout())return;
   saveCustomer();
   const sub=cart.reduce((s,i)=>s+Number(i.preco)*i.qty,0),fee=deliveryType.value==='Entrega'?Number(settings.taxa_entrega||0):0,order=Math.floor(1000+Math.random()*9000);
-  try{await saveOrder(order,sub,fee)}catch(e){console.error(e);if(!confirm('Não foi possível salvar no painel. Enviar mesmo assim pelo WhatsApp?'))return}
+  try{
+    await saveOrder(order,sub,fee);
+  }catch(e){
+    console.error(e);
+    alert('Não foi possível registrar o pedido no painel. Tente novamente. Detalhe: ' + (e.message || 'erro desconhecido'));
+    return;
+  }
   let text=`*NOVO PEDIDO #${order}*\n\n*Cliente:* ${customerName.value.trim()}\n*Telefone:* ${customerPhone.value}\n*Tipo:* ${deliveryType.value}\n`;
   if(deliveryType.value==='Entrega')text+=`*Endereço:* ${address.value.trim()}, ${addressNumber.value.trim()}\n*Bairro:* ${neighborhood.value.trim()}\n*Referência:* ${reference.value.trim()||'Não informada'}\n`;
   text+=`*Pagamento:* ${payment.value}`;
