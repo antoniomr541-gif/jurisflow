@@ -1,26 +1,24 @@
 <!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cliente | PedidoFlow</title><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
-<body class="auth-body"><div class="auth-card"><div class="logo">🍔</div><h1>Área do cliente</h1><p class="muted">A conta é opcional. Use-a para ver seu histórico e receber promoções autorizadas.</p>
+<body class="auth-body"><div class="auth-card"><div class="logo">🍔</div><h1>Área do cliente</h1><p class="muted">A conta é opcional. Use-a para histórico e promoções autorizadas.</p>
 <input id="nameInput" placeholder="Seu nome"><input id="phoneInput" placeholder="Celular com DDD"><input id="passwordInput" type="password" placeholder="Senha (mínimo 6 caracteres)">
 <label style="display:flex;gap:8px;align-items:flex-start;margin:8px 0 12px;font-size:13px"><input id="marketingConsent" type="checkbox" style="width:auto;margin:2px 0 0"><span>Autorizo promoções pelo WhatsApp.</span></label>
 <button class="btn btn-primary" onclick="signIn()">Entrar</button><button class="btn btn-light" onclick="signUp()">Criar conta</button>
 <div id="messageElement" class="message"></div><p style="text-align:center"><a href="index.html">Voltar ao cardápio</a></p></div>
 <script>
-const db=supabase.createClient('https://ggdmqffnkpumjwmrqqzi.supabase.co','sb_publishable_FKN_oKLr3Ud0C5p6Sw77Uw_1P8w1hhc');
-const digits=v=>v.replace(/\D/g,''), syntheticEmail=p=>`cliente_${digits(p)}@pedidoflow.local`;
+const db=supabase.createClient('https://ggdmqffnkpumjwmrqqzi.supabase.co','sb_publishable_FKN_oKLr3Ud0C5p6Sw77Uw_1P8w1hhc'),digits=v=>String(v||'').replace(/\D/g,''),syntheticEmail=p=>`cliente_${digits(p)}@pedidoflow.local`;
 function show(t,ok=false){messageElement.textContent=t;messageElement.style.color=ok?'#15803d':'#b91c1c'}
 async function signUp(){
  const nome=nameInput.value.trim(),phone=digits(phoneInput.value),password=passwordInput.value;
- if(!nome)return show('Informe seu nome.');if(phone.length<10)return show('Informe um celular válido.');if(password.length<6)return show('A senha precisa ter 6 caracteres.');
- show('Criando conta...',true);
+ if(nome.length<3)return show('Informe um nome válido.');if(phone.length<10)return show('Informe um celular válido.');if(password.length<6)return show('A senha precisa ter 6 caracteres.');
  const {data,error}=await db.auth.signUp({email:syntheticEmail(phone),password,options:{data:{nome,whatsapp:phone}}});
- if(error)return show(error.message);if(!data.session)return show('Desative Confirm email no Supabase.');
+ if(error)return show(error.message);if(!data.session)return show('No Supabase, desative Confirm email.');
  const {error:profileError}=await db.from('perfis').upsert({id:data.user.id,nome,whatsapp:phone,aceita_promocoes:marketingConsent.checked,consentimento_em:marketingConsent.checked?new Date().toISOString():null,role:'cliente'},{onConflict:'id'});
- if(profileError)return show('Conta criada, mas houve erro no perfil: '+profileError.message);location.href='conta.html';
+ if(profileError)return show(profileError.message);location.href='conta.html';
 }
 async function signIn(){
  const phone=digits(phoneInput.value),password=passwordInput.value;if(phone.length<10)return show('Informe seu celular.');if(!password)return show('Informe a senha.');
  const {data,error}=await db.auth.signInWithPassword({email:syntheticEmail(phone),password});if(error)return show('Celular ou senha inválidos.');
- const {data:profile}=await db.from('perfis').select('role').eq('id',data.user.id).single();if(profile?.role==='dono'){await db.auth.signOut();return show('Use o acesso do dono.')}location.href='conta.html';
+ const {data:p}=await db.from('perfis').select('role').eq('id',data.user.id).single();if(p?.role==='dono'){await db.auth.signOut();return show('Use o acesso do dono.')}location.href='conta.html';
 }
 </script></body></html>

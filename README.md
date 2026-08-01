@@ -1,18 +1,28 @@
-# PedidoFlow V2.1
+# PedidoFlow V3 — Versão para apresentação
 
-## Alterações
-- pedido como visitante, sem cadastro obrigatório;
-- conta opcional para histórico e promoções;
-- 20 produtos fictícios inseridos automaticamente;
-- criação automática das tabelas produtos e configurações;
-- instalação do Supabase em um único SQL.
+## O que foi revisado
+- telefone aceita somente números e aplica máscara;
+- nome validado;
+- endereço, número e bairro obrigatórios para entrega;
+- retirada oculta os campos de endereço;
+- troco validado quando o pagamento é dinheiro;
+- dados do cliente ficam salvos no navegador;
+- pedidos aparecem no painel do dono;
+- pedido mostra cliente, telefone, endereço, pagamento, observações e itens;
+- alteração de status;
+- botão para abrir WhatsApp do cliente;
+- painel com contador de pedidos pendentes;
+- cardápio de demonstração incluso.
 
 ## Instalação
-1. Execute `supabase-v2.1.sql` no SQL Editor.
-2. Envie todos os arquivos HTML e `styles.css` para o GitHub.
-3. Faça commit e aguarde a Vercel.
-4. Troque o WhatsApp padrão no painel do dono.
+1. Execute `supabase-v3.sql`.
+2. Envie os arquivos HTML e `styles.css` ao GitHub.
+3. Crie a conta do dono no Supabase Authentication.
+4. Edite e execute `promover-dono.sql`.
+5. No painel, configure WhatsApp, Pix, taxa e status da loja.
 
-## Login
-O cadastro de cliente continua disponível, mas não é necessário para comprar.
-Se houver limite temporário de e-mail, o visitante ainda consegue fazer pedidos normalmente.
+## Links
+- `/` cardápio
+- `/login.html` cliente
+- `/dono.html` dono
+- `/admin.html` painel
