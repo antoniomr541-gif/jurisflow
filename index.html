@@ -9,7 +9,7 @@
 <body>
 <div class="topbar"><div class="container topbar-inner">
   <div><span id="storeStatus">Loja aberta</span></div>
-  <div><span id="storeAddress">Jequié - BA</span> · <a id="accountLink" href="login.html"><strong>Entrar</strong></a></div>
+  <div><span id="storeAddress">Jequié - BA</span> · <a id="accountLink" href="login.html"><strong>Entrar (opcional)</strong></a></div>
 </div></div>
 
 <section class="hero"><div class="container hero-grid">
@@ -69,7 +69,7 @@ async function loadData(){
 
 async function renderAccount(){
   const {data:{session}}=await db.auth.getSession();
-  if(!session)return;
+  if(!session){accountLink.textContent='Entrar (opcional)';return;}
   const {data:profile}=await db.from('perfis').select('nome,role').eq('id',session.user.id).single();
   accountLink.textContent=profile?.nome?`Olá, ${profile.nome.split(' ')[0]}`:'Minha conta';
   accountLink.href=profile?.role==='dono'?'admin.html':'conta.html';

@@ -1,26 +1,18 @@
-# PedidoFlow V2
+# PedidoFlow V2.1
 
-## Inclui
-- cardápio público profissional;
-- login do cliente por celular + senha;
-- login separado do dono;
-- conta do cliente com histórico;
-- painel do dono com dashboard;
-- pedidos e alteração de status;
-- produtos com upload de imagem;
-- clientes;
-- central de promoções;
-- configurações da loja;
-- Supabase + Vercel.
+## Alterações
+- pedido como visitante, sem cadastro obrigatório;
+- conta opcional para histórico e promoções;
+- 20 produtos fictícios inseridos automaticamente;
+- criação automática das tabelas produtos e configurações;
+- instalação do Supabase em um único SQL.
 
 ## Instalação
-1. Execute `supabase-v2.sql` no SQL Editor.
-2. Em Authentication > Providers > Email, desative `Confirm email`.
-3. Envie todos os arquivos ao GitHub.
-4. Crie a conta do dono em Authentication > Users.
-5. Copie o UUID e execute `promover-dono.sql` após substituir o UUID.
-6. Acesse `/dono.html`.
+1. Execute `supabase-v2.1.sql` no SQL Editor.
+2. Envie todos os arquivos HTML e `styles.css` para o GitHub.
+3. Faça commit e aguarde a Vercel.
+4. Troque o WhatsApp padrão no painel do dono.
 
-## Aviso
-A Central de Promoções abre conversas individuais no WhatsApp.
-Envio automático em massa exige a Plataforma oficial do WhatsApp Business.
+## Login
+O cadastro de cliente continua disponível, mas não é necessário para comprar.
+Se houver limite temporário de e-mail, o visitante ainda consegue fazer pedidos normalmente.
