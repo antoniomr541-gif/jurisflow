@@ -152,3 +152,33 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .stats{grid-template-columns:1fr}
   .topbar-inner{display:grid}
 }
+
+/* Flow Pedidos 2.3 — campanhas visuais e mobile-first */
+.field-label{display:block;font-size:13px;font-weight:800;margin:16px 0 7px}
+.field-control{width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:13px;background:#fff;min-height:48px}
+.campaign-text{min-height:140px;resize:vertical;line-height:1.5}
+.campaign-layout{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:24px;margin-top:18px;align-items:start}
+.campaign-form{min-width:0}
+.upload-zone{min-height:150px;border:2px dashed #fdba74;border-radius:18px;background:#fff7ed;display:grid;place-items:center;text-align:center;padding:22px;cursor:pointer;color:#9a3412}
+.upload-zone input{display:none}.upload-zone strong{font-size:17px}.upload-zone span{display:block;font-size:13px;margin-top:4px}
+.campaign-audience{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px;margin-top:16px;background:#f9fafb;border:1px solid var(--border);border-radius:15px}
+.campaign-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}.btn-large{min-height:48px;padding-inline:18px}.btn:disabled{opacity:.55;cursor:not-allowed}
+.phone-preview{background:#111827;border-radius:28px;padding:10px;position:sticky;top:20px;box-shadow:0 22px 50px rgba(15,23,42,.22)}
+.phone-top{color:white;text-align:center;font-size:12px;font-weight:800;padding:7px}
+.whatsapp-bg{background:#efeae2;min-height:520px;border-radius:20px;padding:20px 12px;background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:13px 13px}
+.message-bubble{background:#d9fdd3;border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.15);max-width:310px;margin-left:auto}
+.campaign-image-placeholder{aspect-ratio:1/1;background:#d1d5db;display:grid;place-items:center;color:#6b7280;text-align:center;padding:20px}.campaign-image-placeholder img{width:100%;height:100%;object-fit:cover}
+.message-content{padding:10px 11px 6px}.message-content strong{display:block;margin-bottom:5px}.message-content p{font-size:13px;line-height:1.45;margin:0;white-space:pre-wrap}.message-content small{display:block;text-align:right;color:#667781;font-size:10px;margin-top:5px}
+.message-cta{border-top:1px solid rgba(0,0,0,.08);text-align:center;color:#027eb5;font-size:13px;font-weight:800;padding:10px}
+.campaign-progress{height:9px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:16px}.campaign-progress>div{height:100%;width:0;background:var(--success);transition:width .25s}
+.customer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}.customer-card{display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:10px;border:1px solid var(--border);border-radius:15px;padding:11px}.customer-avatar{width:42px;height:42px;border-radius:50%;background:#ffedd5;color:#c2410c;display:grid;place-items:center;font-weight:900}
+.campaign-history-item{display:grid;grid-template-columns:58px 1fr auto;gap:12px;align-items:center}.campaign-history-item img{width:58px;height:58px;object-fit:cover;border-radius:12px}.api-ready{background:#dcfce7;color:#166534}
+@media(max-width:1000px){.campaign-layout{grid-template-columns:1fr 310px}}
+@media(max-width:760px){
+  .campaign-heading{align-items:flex-start}.campaign-heading h2{margin:4px 0 6px}
+  .campaign-layout{grid-template-columns:1fr;gap:16px}.phone-preview{position:static;order:-1;border-radius:22px;padding:8px}.whatsapp-bg{min-height:auto;padding:14px 10px}.message-bubble{max-width:100%}
+  .campaign-image-placeholder{aspect-ratio:16/10}.campaign-actions{display:grid;grid-template-columns:1fr 1fr}.campaign-actions .btn-success{grid-column:1/-1;width:100%}
+  .field-control{font-size:16px}.upload-zone{min-height:120px}.customer-grid{grid-template-columns:1fr}.campaign-history-item{grid-template-columns:50px 1fr}.campaign-history-item .status-pill{grid-column:2}
+  .admin-main h1,.admin-main h2{line-height:1.15}.row>select{max-width:100%}
+}
+@media(max-width:420px){.campaign-actions{grid-template-columns:1fr}.campaign-actions .btn-success{grid-column:auto}.campaign-audience{align-items:flex-start}.campaign-shell{padding:13px}.phone-preview{margin-inline:-3px}}
