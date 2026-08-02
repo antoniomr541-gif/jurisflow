@@ -30,10 +30,52 @@
 
 <section id="clients" class="section hidden"><div class="card"><h2>Clientes cadastrados</h2><div id="clientsList" class="table-list"></div></div></section>
 
-<section id="promotions" class="section hidden"><div class="card"><h2>Central de promoções</h2><div class="notice">Somente clientes que autorizaram promoções aparecem aqui. O envio abre conversas individuais no WhatsApp.</div>
-<div class="promo-grid" style="margin-top:16px"><div><textarea id="promotionMessage" style="width:100%;min-height:160px;padding:12px;border:1px solid var(--border);border-radius:12px" placeholder="Escreva a promoção do dia"></textarea>
-<div class="row" style="margin-top:10px"><button class="btn btn-primary" onclick="openNextPromotion()">Abrir próximo cliente</button><button class="btn btn-light" onclick="copyPromotionNumbers()">Copiar números</button></div><p id="promotionProgress" class="muted"></p></div>
-<div><strong id="consentedCount">0 clientes</strong><div id="promotionCustomers"></div></div></div></div></section>
+<section id="promotions" class="section hidden">
+<div class="card">
+  <h2>Marketing no WhatsApp</h2>
+
+  <div class="notice">
+    Envie uma única mensagem pela lista de transmissão do WhatsApp Business.
+    O PedidoFlow exporta os clientes autorizados e prepara o texto da campanha.
+  </div>
+
+  <div class="promo-grid" style="margin-top:16px">
+    <div>
+      <label class="muted">Mensagem da promoção</label>
+      <textarea
+        id="promotionMessage"
+        style="width:100%;min-height:180px;padding:12px;border:1px solid var(--border);border-radius:12px;font-size:16px"
+        placeholder="Ex.: 🍔 Promoção de hoje! X-Bacon + Refrigerante por R$ 24,90."></textarea>
+
+      <div class="order-detail" style="margin-top:12px">
+        <strong>Como usar</strong>
+        <div class="muted" style="line-height:1.6;margin-top:6px">
+          1. Exporte os contatos autorizados.<br>
+          2. Importe-os para os contatos do celular.<br>
+          3. Crie uma lista de transmissão no WhatsApp Business.<br>
+          4. Copie a mensagem e envie uma única vez para a lista.
+        </div>
+      </div>
+
+      <div class="order-actions" style="margin-top:14px">
+        <button class="btn btn-success" onclick="exportPromotionCSV()">Baixar clientes em CSV</button>
+        <button class="btn btn-primary" onclick="copyPromotionMessage()">Copiar mensagem pronta</button>
+        <button class="btn btn-light" onclick="copyPromotionNumbers()">Copiar números</button>
+      </div>
+
+      <p id="promotionProgress" class="muted"></p>
+    </div>
+
+    <div>
+      <div class="stat" style="margin-bottom:12px">
+        <div class="muted">Clientes autorizados</div>
+        <strong id="consentedCount">0 clientes</strong>
+      </div>
+      <div id="promotionCustomers"></div>
+    </div>
+  </div>
+</div>
+</section>
 
 <section id="settings" class="section hidden"><div class="card"><h2>Configurações da loja</h2><div class="form-grid">
 <input id="storeNameInput" placeholder="Nome da loja"><input id="storeWhatsappInput" placeholder="WhatsApp da loja"><input id="deliveryFeeInput" placeholder="Taxa de entrega">
@@ -119,13 +161,86 @@ async function loadClients(){
  promotionCustomers.innerHTML=promotionClients.length?promotionClients.map((c,i)=>`
    <div class="list-item"><div class="row">
      <div><strong>${c.nome}</strong><div class="muted">${c.whatsapp}</div></div>
-     <button class="btn btn-light" onclick="openPromotionFor(${i})">Enviar</button>
+     <span class="status-pill">Autorizado</span>
    </div></div>`).join(''):'<p class="muted">Nenhum cliente autorizado.</p>';
 }
 function promotionText(){const m=promotionMessage.value.trim();if(!m){alert('Escreva a promoção.');return null}return `${m}\n\nPeça aqui: ${location.origin}/\n\nResponda SAIR para não receber mais promoções.`}
 function openPromotionFor(i){const text=promotionText();if(!text)return;let phone=digits(promotionClients[i].whatsapp);if(!phone.startsWith('55'))phone='55'+phone;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`,'_blank')}
 function openNextPromotion(){if(!promotionClients.length)return alert('Nenhum cliente autorizado.');if(promotionIndex>=promotionClients.length)promotionIndex=0;openPromotionFor(promotionIndex);promotionIndex++;promotionProgress.textContent=`Preparado ${promotionIndex} de ${promotionClients.length}.`}
 async function copyPromotionNumbers(){const t=promotionClients.map(c=>`${c.nome} - ${c.whatsapp}`).join('\n');await navigator.clipboard.writeText(t);alert('Copiado.')}
+
+
+function promotionText(){
+  const message=promotionMessage.value.trim();
+  if(!message){
+    alert('Escreva a promoção.');
+    return null;
+  }
+  return `${message}
+
+Peça aqui:
+${location.origin}/
+
+Responda SAIR para não receber novas promoções.`;
+}
+
+async function copyPromotionMessage(){
+  const text=promotionText();
+  if(!text)return;
+  await navigator.clipboard.writeText(text);
+  promotionProgress.textContent='Mensagem copiada. Agora cole na lista de transmissão do WhatsApp Business.';
+  alert('Mensagem copiada.');
+}
+
+async function copyPromotionNumbers(){
+  if(!promotionClients.length){
+    alert('Nenhum cliente autorizou promoções.');
+    return;
+  }
+  const text=promotionClients
+    .map(c=>`${c.nome||'Cliente'} - ${c.whatsapp}`)
+    .join('\n');
+  await navigator.clipboard.writeText(text);
+  promotionProgress.textContent=`${promotionClients.length} contato(s) copiado(s).`;
+  alert('Números copiados.');
+}
+
+function escapeCSV(value){
+  const text=String(value??'').replace(/"/g,'""');
+  return `"${text}"`;
+}
+
+function exportPromotionCSV(){
+  if(!promotionClients.length){
+    alert('Nenhum cliente autorizou promoções.');
+    return;
+  }
+
+  const rows=[
+    ['Nome','Telefone','Observação'],
+    ...promotionClients.map(c=>[
+      c.nome||'Cliente',
+      c.whatsapp||'',
+      'Autorizou promoções no PedidoFlow'
+    ])
+  ];
+
+  const csv='\uFEFF'+rows
+    .map(row=>row.map(escapeCSV).join(';'))
+    .join('\n');
+
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url;
+  link.download=`clientes-promocoes-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+
+  promotionProgress.textContent=`CSV gerado com ${promotionClients.length} cliente(s).`;
+}
 
 async function loadSettings(){const {data}=await db.from('configuracoes').select('*').order('id').limit(1);if(!data?.length)return;const s=data[0];settingsId=s.id;storeNameInput.value=s.nome_loja||'';storeWhatsappInput.value=s.whatsapp||'';deliveryFeeInput.value=s.taxa_entrega||0;storeAddressInput.value=s.endereco||'';pixKeyInput.value=s.chave_pix||'';storeOpenInput.value=String(s.loja_aberta)}
 async function saveSettings(){const payload={nome_loja:storeNameInput.value.trim(),whatsapp:digits(storeWhatsappInput.value),taxa_entrega:Number(deliveryFeeInput.value.replace(',','.'))||0,endereco:storeAddressInput.value.trim(),chave_pix:pixKeyInput.value.trim(),loja_aberta:storeOpenInput.value==='true',atualizado_em:new Date().toISOString()};let error;if(settingsId)({error}=await db.from('configuracoes').update(payload).eq('id',settingsId));else{const r=await db.from('configuracoes').insert(payload).select().single();error=r.error;if(r.data)settingsId=r.data.id}if(error)return alert(error.message);alert('Configurações salvas.')}
