@@ -1,0 +1,18 @@
+AULAFÁCIL — IMAGENS E DOWNLOAD CORRIGIDOS
+
+Substitua no GitHub:
+1. index.html
+2. app.js
+3. api/generate-activity.js
+
+Correções:
+- ilustrações escolhidas pela resposta correta;
+- correr/pular/dançar usam imagem relacionada a movimento;
+- escrever usa lápis;
+- ler usa livro;
+- comer usa fruta;
+- nadar usa peixe;
+- download em PDF corrigido para celular;
+- atividades longas divididas em várias páginas.
+
+Depois do commit, aguarde o Vercel e teste em aba anônima.

@@ -1,12 +1,11 @@
-# AulaFácil V3 — Vercel
+# AulaFácil V6 — Ilustrações e pintura
 
-Inclui login obrigatório com Supabase, cadastro, recuperação de senha, perfil individual do professor, nome da escola e logo automáticos, atividade com ou sem ilustração, adaptação para estudante autista, gabarito separado e relatórios para AC.
+## Novidades
+- Ilustrações vetoriais reais nas atividades quando solicitadas.
+- Educação Infantil sempre lúdica e ilustrada.
+- Novo modo **Atividade de pintura** com desenho grande para colorir.
+- Gabarito separado e respostas específicas.
 
-## Variáveis no Vercel
-
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL` (opcional; padrão `gpt-5-mini`)
-
-Depois de adicionar as variáveis, faça um novo deploy.
+## Vercel
+Variáveis: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY`.
+`GEMINI_MODEL` é opcional.
