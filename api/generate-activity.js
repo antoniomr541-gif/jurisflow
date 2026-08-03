@@ -1,11 +1,22 @@
 function parseBody(body) {
-  return typeof body === "string" ? JSON.parse(body) : body || {};
+  if (!body) return {};
+
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return {};
+    }
+  }
+
+  return body;
 }
 
 function normalizeType(value = "") {
   const type = String(value).toLowerCase();
 
   if (type.includes("mista")) return "mista";
+
   if (
     type.includes("discurs") ||
     type.includes("dissert") ||
@@ -17,35 +28,190 @@ function normalizeType(value = "") {
   return "objetiva";
 }
 
-function isGenericAnswer(value) {
-  const answer = String(value || "").trim().toLowerCase();
+function removeMarkdown(text = "") {
+  return String(text)
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function isGenericAnswer(answer = "") {
+  const value = String(answer).trim().toLowerCase();
 
   const forbidden = [
     "resposta coerente",
     "resposta pessoal",
-    "resposta correta",
     "resposta adequada",
     "qualquer resposta",
+    "resposta correta",
     "de acordo com o tema",
     "aceitar resposta semelhante",
   ];
 
-  return (
-    !answer ||
-    forbidden.some((expression) => answer.includes(expression))
-  );
+  return !value || forbidden.some((item) => value.includes(item));
 }
 
-function validateActivity(activity, quantity, requestedType) {
-  if (!activity || !Array.isArray(activity.questions)) {
-    throw new Error("Estrutura de atividade inválida.");
+function buildPrompt(data) {
+  const type = normalizeType(data.questionType);
+
+  let typeRules = "";
+
+  if (type === "objetiva") {
+    typeRules = `
+Todas as questões devem ser objetivas.
+
+Cada questão precisa ter exatamente quatro alternativas:
+A, B, C e D.
+
+Somente uma alternativa pode estar correta.
+
+Não use nos enunciados palavras como:
+"explique", "descreva", "justifique" ou "comente".
+
+O campo answerLetter deve conter a letra correta.
+`;
   }
 
-  if (activity.questions.length !== quantity) {
-    throw new Error("Quantidade incorreta de questões.");
+  if (type === "discursiva") {
+    typeRules = `
+Todas as questões devem ser discursivas.
+
+Não inclua alternativas.
+
+O campo options deve ser null.
+
+O campo answer deve apresentar uma resposta-modelo específica,
+correta e completa.
+
+Nunca use respostas genéricas.
+`;
   }
+
+  if (type === "mista") {
+    typeRules = `
+Crie aproximadamente metade das questões objetivas e metade discursivas.
+
+Nas objetivas:
+- use quatro alternativas;
+- somente uma deve estar correta;
+- informe answerLetter.
+
+Nas discursivas:
+- não use alternativas;
+- apresente uma resposta-modelo específica.
+`;
+  }
+
+  const autism =
+    data.autism && data.autism !== "no"
+      ? `
+A atividade deve ser adaptada para estudante autista.
+
+Use:
+- comandos curtos e literais;
+- uma tarefa por bloco;
+- linguagem sem ambiguidades;
+- pouco excesso visual;
+- exemplos simples quando forem necessários.
+
+Nível de adaptação: ${data.autism}.
+`
+      : "";
+
+  const illustrations =
+    data.illustrations && data.illustrations !== "none"
+      ? `
+Inclua no campo visualSupport uma descrição curta de ilustração
+quando ela realmente ajudar na compreensão.
+`
+      : `
+Deixe visualSupport vazio.
+`;
+
+  return `
+Crie uma atividade escolar em português do Brasil.
+
+Matéria: ${data.subject}
+Ano escolar: ${data.grade}
+Tema: ${data.topic}
+Quantidade exata de questões: ${data.quantity}
+Dificuldade: ${data.difficulty}
+Tipo de questão: ${type}
+
+${typeRules}
+
+${autism}
+
+${illustrations}
+
+REGRAS OBRIGATÓRIAS:
+
+1. Respeite exatamente o ano escolar informado.
+2. Gere exatamente ${data.quantity} questões.
+3. Não repita questões.
+4. Não coloque a resposta dentro do enunciado.
+5. O gabarito deve apresentar a resposta verdadeira.
+6. Nunca use respostas genéricas.
+7. Cada objetiva deve ter somente uma alternativa correta.
+8. Retorne somente JSON válido.
+9. Não use texto antes ou depois do JSON.
+
+FORMATO OBRIGATÓRIO:
+
+{
+  "title": "Título da atividade",
+  "instructions": "Orientação para os alunos",
+  "subject": "${data.subject}",
+  "grade": "${data.grade}",
+  "difficulty": "${data.difficulty}",
+  "questions": [
+    {
+      "number": 1,
+      "type": "objetiva",
+      "prompt": "Enunciado da questão",
+      "options": [
+        {
+          "letter": "A",
+          "text": "Primeira alternativa"
+        },
+        {
+          "letter": "B",
+          "text": "Segunda alternativa"
+        },
+        {
+          "letter": "C",
+          "text": "Terceira alternativa"
+        },
+        {
+          "letter": "D",
+          "text": "Quarta alternativa"
+        }
+      ],
+      "answerLetter": "B",
+      "answer": "B) Texto exato da alternativa correta",
+      "explanation": "Explicação curta da resposta",
+      "visualSupport": ""
+    }
+  ]
+}
+`;
+}
+
+function validateActivity(activity, data) {
+  if (!activity || !Array.isArray(activity.questions)) {
+    throw new Error("A IA retornou uma estrutura inválida.");
+  }
+
+  if (activity.questions.length !== data.quantity) {
+    throw new Error("A quantidade de questões retornada está incorreta.");
+  }
+
+  const requestedType = normalizeType(data.questionType);
 
   const questions = activity.questions.map((question, index) => {
+    const number = index + 1;
+
     const type =
       requestedType === "mista"
         ? normalizeType(question.type)
@@ -54,31 +220,42 @@ function validateActivity(activity, quantity, requestedType) {
     const prompt = String(question.prompt || "").trim();
 
     if (!prompt) {
-      throw new Error(`Questão ${index + 1} sem enunciado.`);
+      throw new Error(`A questão ${number} está sem enunciado.`);
     }
 
     if (type === "objetiva") {
-      if (!Array.isArray(question.options) || question.options.length !== 4) {
+      const forbiddenCommands =
+        /\b(explique|descreva|justifique|comente)\b/i;
+
+      if (forbiddenCommands.test(prompt)) {
         throw new Error(
-          `Questão ${index + 1} deve possuir quatro alternativas.`
+          `A questão ${number} não está no formato objetivo.`
         );
       }
 
-      const options = question.options.map((option, optionIndex) => {
-        if (typeof option === "string") {
-          return {
-            letter: ["A", "B", "C", "D"][optionIndex],
-            text: option.trim(),
-          };
-        }
+      if (
+        !Array.isArray(question.options) ||
+        question.options.length !== 4
+      ) {
+        throw new Error(
+          `A questão ${number} precisa ter quatro alternativas.`
+        );
+      }
 
-        return {
-          letter: String(option.letter || "")
-            .trim()
-            .toUpperCase(),
-          text: String(option.text || "").trim(),
-        };
-      });
+      const letters = ["A", "B", "C", "D"];
+
+      const options = question.options.map((option, optionIndex) => ({
+        letter: letters[optionIndex],
+        text: String(
+          typeof option === "string" ? option : option.text || ""
+        ).trim(),
+      }));
+
+      if (options.some((option) => !option.text)) {
+        throw new Error(
+          `A questão ${number} possui alternativa vazia.`
+        );
+      }
 
       const answerLetter = String(
         question.answerLetter || ""
@@ -86,9 +263,9 @@ function validateActivity(activity, quantity, requestedType) {
         .trim()
         .toUpperCase();
 
-      if (!["A", "B", "C", "D"].includes(answerLetter)) {
+      if (!letters.includes(answerLetter)) {
         throw new Error(
-          `Questão ${index + 1} sem alternativa correta válida.`
+          `A questão ${number} não possui alternativa correta válida.`
         );
       }
 
@@ -96,14 +273,14 @@ function validateActivity(activity, quantity, requestedType) {
         (option) => option.letter === answerLetter
       );
 
-      if (!correctOption?.text) {
+      if (!correctOption) {
         throw new Error(
-          `Resposta correta da questão ${index + 1} não encontrada.`
+          `A resposta da questão ${number} não foi encontrada.`
         );
       }
 
       return {
-        number: index + 1,
+        number,
         type: "objetiva",
         prompt,
         options,
@@ -118,12 +295,12 @@ function validateActivity(activity, quantity, requestedType) {
 
     if (isGenericAnswer(answer)) {
       throw new Error(
-        `Gabarito da questão ${index + 1} está genérico.`
+        `O gabarito da questão ${number} veio genérico.`
       );
     }
 
     return {
-      number: index + 1,
+      number,
       type: "discursiva",
       prompt,
       options: null,
@@ -135,170 +312,76 @@ function validateActivity(activity, quantity, requestedType) {
   });
 
   return {
-    title: String(activity.title || "Atividade escolar").trim(),
+    title: String(
+      activity.title ||
+        `Atividade de ${data.subject}: ${data.topic}`
+    ).trim(),
+
     instructions: String(
       activity.instructions ||
         "Leia com atenção e responda às questões."
     ).trim(),
-    subject: String(activity.subject || "").trim(),
-    grade: String(activity.grade || "").trim(),
-    difficulty: String(activity.difficulty || "").trim(),
+
+    subject: data.subject,
+    grade: data.grade,
+    difficulty: data.difficulty,
     questions,
   };
 }
 
-function buildPrompt(data) {
-  const type = normalizeType(data.questionType);
+async function generateWithGemini(data, apiKey) {
+  const model =
+    process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
-  const autism =
-    data.autism === "no" || !data.autism
-      ? "Atividade regular."
-      : `
-Adapte a atividade para estudante autista.
-Use comandos curtos, literais e objetivos.
-Coloque uma tarefa por bloco.
-Evite poluição visual e linguagem ambígua.
-Use exemplos quando necessário.
-Nível de adaptação: ${data.autism}.
-`;
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/` +
+    `${model}:generateContent?key=${apiKey}`;
 
-  const illustration =
-    data.illustrations === "none" || !data.illustrations
-      ? "Não inclua apoio visual."
-      : data.illustrations === "simple"
-      ? "Inclua no campo visualSupport uma descrição curta de ilustração simples apenas quando for útil."
-      : "Inclua no campo visualSupport apoio visual nas questões em que ele facilitar a compreensão.";
+  const response = await fetch(url, {
+    method: "POST",
 
-  let typeInstructions = "";
+    headers: {
+      "Content-Type": "application/json",
+    },
 
-  if (type === "objetiva") {
-    typeInstructions = `
-Todas as questões devem ser objetivas.
-Cada questão deve ter exatamente quatro alternativas: A, B, C e D.
-Somente uma alternativa pode estar correta.
-Não use comandos como "explique", "descreva", "justifique" ou "comente".
-Preencha answerLetter com a letra correta.
-Preencha answer com a letra e o texto exato da alternativa correta.
-`;
-  } else if (type === "discursiva") {
-    typeInstructions = `
-Todas as questões devem ser discursivas.
-Não inclua alternativas.
-O campo options deve ser null.
-O campo answer deve conter uma resposta-modelo específica, completa e correta.
-Nunca use expressões genéricas como "resposta coerente", "resposta pessoal" ou "resposta adequada".
-`;
-  } else {
-    typeInstructions = `
-Crie aproximadamente metade das questões objetivas e metade discursivas.
-Nas objetivas, use exatamente quatro alternativas e somente uma correta.
-Nas discursivas, não inclua alternativas.
-Toda questão deve possuir um gabarito específico e correto.
-`;
-  }
-
-  return `
-Crie uma atividade escolar em português do Brasil.
-
-Matéria: ${data.subject}
-Ano escolar: ${data.grade}
-Tema: ${data.topic}
-Quantidade exata: ${data.quantity}
-Dificuldade: ${data.difficulty}
-Tipo: ${type}
-Impressão: ${data.printStyle}
-Orientações extras: ${data.extraInstructions || "Nenhuma"}
-
-${autism}
-
-${illustration}
-
-${typeInstructions}
-
-Regras obrigatórias:
-
-1. Respeite exatamente o ano escolar informado.
-2. Não inclua respostas nos enunciados.
-3. Não repita questões.
-4. Gere exatamente ${data.quantity} questões.
-5. O gabarito deve conter a resposta verdadeira de cada questão.
-6. Nunca use respostas genéricas.
-7. Nas objetivas, answerLetter deve ser A, B, C ou D.
-8. Nas discursivas, answer deve conter uma resposta-modelo específica.
-9. Retorne somente JSON válido.
-
-Formato obrigatório:
-
-{
-  "title": "Título da atividade",
-  "instructions": "Instruções para o aluno",
-  "subject": "${data.subject}",
-  "grade": "${data.grade}",
-  "difficulty": "${data.difficulty}",
-  "questions": [
-    {
-      "number": 1,
-      "type": "objetiva",
-      "prompt": "Enunciado",
-      "options": [
-        {"letter":"A","text":"Alternativa A"},
-        {"letter":"B","text":"Alternativa B"},
-        {"letter":"C","text":"Alternativa C"},
-        {"letter":"D","text":"Alternativa D"}
-      ],
-      "answerLetter": "B",
-      "answer": "B) Texto da alternativa correta",
-      "explanation": "Explicação curta da resposta",
-      "visualSupport": ""
-    }
-  ]
-}
-`;
-}
-
-async function generateWithOpenAI(data, apiKey) {
-  const response = await fetch(
-    "https://api.openai.com/v1/responses",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-5-mini",
-        input: buildPrompt(data),
-        text: {
-          format: {
-            type: "json_object",
-          },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: buildPrompt(data),
+            },
+          ],
         },
-      }),
-    }
-  );
+      ],
+
+      generationConfig: {
+        temperature: 0.3,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
 
   const result = await response.json();
 
   if (!response.ok) {
-    console.error("Erro da OpenAI:", result);
+    console.error("Erro retornado pelo Gemini:", result);
 
     throw new Error(
       result?.error?.message ||
-        "A OpenAI não conseguiu gerar a atividade."
+        "O Gemini não conseguiu gerar a atividade."
     );
   }
 
   const text =
-    result.output_text ||
-    result.output
-      ?.flatMap((item) => item.content || [])
-      ?.find((item) => item.type === "output_text")?.text;
+    result?.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (!text) {
-    throw new Error("A OpenAI retornou uma resposta vazia.");
+    throw new Error("O Gemini retornou uma resposta vazia.");
   }
 
-  return JSON.parse(text);
+  return JSON.parse(removeMarkdown(text));
 }
 
 export default async function handler(req, res) {
@@ -309,65 +392,100 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(503).json({
-        error: "OPENAI_API_KEY não configurada no Vercel.",
-      });
-    }
-
     const body = parseBody(req.body);
 
     const quantity = Math.min(
-      Math.max(parseInt(body.quantity, 10) || 10, 1),
+      Math.max(
+        Number.parseInt(
+          body.quantity || body.quantidade,
+          10
+        ) || 10,
+        1
+      ),
       30
     );
 
     const data = {
-      ...body,
-      subject: String(body.subject || "").trim(),
-      grade: String(body.grade || "").trim(),
-      topic: String(body.topic || "").trim(),
-      difficulty: String(body.difficulty || "").trim(),
-      questionType: normalizeType(body.questionType),
-      printStyle: String(body.printStyle || "").trim(),
-      extraInstructions: String(
-        body.extraInstructions || ""
+      subject: String(
+        body.subject || body.materia || ""
       ).trim(),
+
+      grade: String(
+        body.grade || body.ano || ""
+      ).trim(),
+
+      topic: String(
+        body.topic || body.tema || ""
+      ).trim(),
+
+      difficulty: String(
+        body.difficulty ||
+          body.dificuldade ||
+          "Média"
+      ).trim(),
+
+      questionType: normalizeType(
+        body.questionType ||
+          body.tipo ||
+          "objetiva"
+      ),
+
+      illustrations: String(
+        body.illustrations ||
+          body.ilustracoes ||
+          "none"
+      ).trim(),
+
+      autism: String(
+        body.autism ||
+          body.autismo ||
+          "no"
+      ).trim(),
+
       quantity,
     };
 
     if (!data.subject || !data.grade || !data.topic) {
       return res.status(400).json({
-        error: "Preencha matéria, ano escolar e tema.",
+        error:
+          "Preencha matéria, ano escolar e tema.",
+      });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(503).json({
+        error:
+          "O gerador ainda não está configurado.",
       });
     }
 
     let lastError;
 
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
-        const activity = await generateWithOpenAI(
+        const generated = await generateWithGemini(
           data,
           apiKey
         );
 
         const validated = validateActivity(
-          activity,
-          quantity,
-          data.questionType
+          generated,
+          data
         );
 
         return res.status(200).json(validated);
       } catch (error) {
         lastError = error;
+
         console.error(
           `Tentativa ${attempt} falhou:`,
           error
         );
       }
     }
+  
 
     return res.status(500).json({
       error:
@@ -375,7 +493,7 @@ export default async function handler(req, res) {
         "Não foi possível gerar uma atividade válida.",
     });
   } catch (error) {
-    console.error(error);
+    console.error("Erro geral:", error);
 
     return res.status(500).json({
       error: "Erro ao gerar atividade.",
