@@ -1,502 +1,356 @@
-function parseBody(body) {
-  if (!body) return {};
+const OBJECTIVE_FORBIDDEN = /\b(explique|justifique|comente|descreva|discorra|fale sobre)\b/i;
 
-  if (typeof body === "string") {
-    try {
-      return JSON.parse(body);
-    } catch {
-      return {};
-    }
-  }
-
-  return body;
+function normalize(value = '') {
+  return String(value).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-function normalizeType(value = "") {
-  const type = String(value).toLowerCase();
 
-  if (type.includes("mista")) return "mista";
-
-  if (
-    type.includes("discurs") ||
-    type.includes("dissert") ||
-    type.includes("aberta")
-  ) {
-    return "discursiva";
-  }
-
-  return "objetiva";
-}
-
-function removeMarkdown(text = "") {
-  return String(text)
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "")
+function cleanOptionText(value = '') {
+  return String(value)
+    .trim()
+    .replace(/^\s*\(?[A-D]\)?\s*[\)\.\-:]\s*/i, '')
+    .replace(/^\s*\([A-D]\)\s*/i, '')
     .trim();
 }
 
-function isGenericAnswer(answer = "") {
-  const value = String(answer).trim().toLowerCase();
 
-  const forbidden = [
-    "resposta coerente",
-    "resposta pessoal",
-    "resposta adequada",
-    "qualquer resposta",
-    "resposta correta",
-    "de acordo com o tema",
-    "aceitar resposta semelhante",
+const ALLOWED_ILLUSTRATION_KINDS = new Set([
+  'apple','flower','sun','cloud','fish','butterfly','tree','house',
+  'book','pencil','planet','heart','triangle','square','circle','ball','star'
+]);
+
+function wantsIllustrations(request = {}) {
+  const value = normalize(request.illustrations || '');
+  return value && !['none','nao','não','sem','no'].includes(value);
+}
+
+function chooseIllustrationKind(text = '', subject = '', topic = '', index = 0) {
+  const source = normalize(`${text} ${subject} ${topic}`);
+
+  const rules = [
+    ['apple', ['maca','fruta','alimentacao','alimento']],
+    ['flower', ['flor','planta','jardim','primavera']],
+    ['sun', ['sol','dia','calor','verao','clima']],
+    ['cloud', ['nuvem','chuva','tempo','agua']],
+    ['fish', ['peixe','mar','oceano','rio','animal aquatico']],
+    ['butterfly', ['borboleta','inseto','metamorfose']],
+    ['tree', ['arvore','natureza','meio ambiente','floresta']],
+    ['house', ['casa','familia','moradia','bairro']],
+    ['book', ['livro','leitura','portugues','historia','texto','pronome']],
+    ['pencil', ['lapis','escrita','escrever','atividade','escola']],
+    ['planet', ['planeta','sistema solar','espaco','geografia','universo']],
+    ['heart', ['amor','amizade','respeito','sentimento']],
+    ['triangle', ['triangulo','geometria']],
+    ['square', ['quadrado','geometria']],
+    ['circle', ['circulo','geometria','roda']],
+    ['ball', ['bola','esporte','educacao fisica','futebol']]
   ];
 
-  return !value || forbidden.some((item) => value.includes(item));
+  for (const [kind, words] of rules) {
+    if (words.some(word => source.includes(normalize(word)))) return kind;
+  }
+
+  const defaults = ['book','pencil','star','circle'];
+  return defaults[index % defaults.length];
 }
 
-function buildPrompt(data) {
-  const type = normalizeType(data.questionType);
+function applyIllustrations(activity, request) {
+  if (!activity || !Array.isArray(activity.questions)) return activity;
 
-  let typeRules = "";
-
-  if (type === "objetiva") {
-    typeRules = `
-Todas as questões devem ser objetivas.
-
-Cada questão precisa ter exatamente quatro alternativas:
-A, B, C e D.
-
-Somente uma alternativa pode estar correta.
-
-Não use nos enunciados palavras como:
-"explique", "descreva", "justifique" ou "comente".
-
-O campo answerLetter deve conter a letra correta.
-`;
-  }
-
-  if (type === "discursiva") {
-    typeRules = `
-Todas as questões devem ser discursivas.
-
-Não inclua alternativas.
-
-O campo options deve ser null.
-
-O campo answer deve apresentar uma resposta-modelo específica,
-correta e completa.
-
-Nunca use respostas genéricas.
-`;
-  }
-
-  if (type === "mista") {
-    typeRules = `
-Crie aproximadamente metade das questões objetivas e metade discursivas.
-
-Nas objetivas:
-- use quatro alternativas;
-- somente uma deve estar correta;
-- informe answerLetter.
-
-Nas discursivas:
-- não use alternativas;
-- apresente uma resposta-modelo específica.
-`;
-  }
-
-  const autism =
-    data.autism && data.autism !== "no"
-      ? `
-A atividade deve ser adaptada para estudante autista.
-
-Use:
-- comandos curtos e literais;
-- uma tarefa por bloco;
-- linguagem sem ambiguidades;
-- pouco excesso visual;
-- exemplos simples quando forem necessários.
-
-Nível de adaptação: ${data.autism}.
-`
-      : "";
-
-  const illustrations =
-    data.illustrations && data.illustrations !== "none"
-      ? `
-Inclua no campo visualSupport uma descrição curta de ilustração
-quando ela realmente ajudar na compreensão.
-`
-      : `
-Deixe visualSupport vazio.
-`;
-
-  return `
-Crie uma atividade escolar em português do Brasil.
-
-Matéria: ${data.subject}
-Ano escolar: ${data.grade}
-Tema: ${data.topic}
-Quantidade exata de questões: ${data.quantity}
-Dificuldade: ${data.difficulty}
-Tipo de questão: ${type}
-
-${typeRules}
-
-${autism}
-
-${illustrations}
-
-REGRAS OBRIGATÓRIAS:
-
-1. Respeite exatamente o ano escolar informado.
-2. Gere exatamente ${data.quantity} questões.
-3. Não repita questões.
-4. Não coloque a resposta dentro do enunciado.
-5. O gabarito deve apresentar a resposta verdadeira.
-6. Nunca use respostas genéricas.
-7. Cada objetiva deve ter somente uma alternativa correta.
-8. Retorne somente JSON válido.
-9. Não use texto antes ou depois do JSON.
-
-FORMATO OBRIGATÓRIO:
-
-{
-  "title": "Título da atividade",
-  "instructions": "Orientação para os alunos",
-  "subject": "${data.subject}",
-  "grade": "${data.grade}",
-  "difficulty": "${data.difficulty}",
-  "questions": [
-    {
-      "number": 1,
-      "type": "objetiva",
-      "prompt": "Enunciado da questão",
-      "options": [
-        {
-          "letter": "A",
-          "text": "Primeira alternativa"
-        },
-        {
-          "letter": "B",
-          "text": "Segunda alternativa"
-        },
-        {
-          "letter": "C",
-          "text": "Terceira alternativa"
-        },
-        {
-          "letter": "D",
-          "text": "Quarta alternativa"
-        }
-      ],
-      "answerLetter": "B",
-      "answer": "B) Texto exato da alternativa correta",
-      "explanation": "Explicação curta da resposta",
-      "visualSupport": ""
-    }
-  ]
-}
-`;
-}
-
-function validateActivity(activity, data) {
-  if (!activity || !Array.isArray(activity.questions)) {
-    throw new Error("A IA retornou uma estrutura inválida.");
-  }
-
-  if (activity.questions.length !== data.quantity) {
-    throw new Error("A quantidade de questões retornada está incorreta.");
-  }
-
-  const requestedType = normalizeType(data.questionType);
-
-  const questions = activity.questions.map((question, index) => {
-    const number = index + 1;
-
-    const type =
-      requestedType === "mista"
-        ? normalizeType(question.type)
-        : requestedType;
-
-    const prompt = String(question.prompt || "").trim();
-
-    if (!prompt) {
-      throw new Error(`A questão ${number} está sem enunciado.`);
+  const enabled = wantsIllustrations(request);
+  activity.questions.forEach((q, index) => {
+    if (!enabled) {
+      q.illustration = null;
+      return;
     }
 
-    if (type === "objetiva") {
-      const forbiddenCommands =
-        /\b(explique|descreva|justifique|comente)\b/i;
+    let kind = '';
+    const visual = q.visualSupport;
 
-      if (forbiddenCommands.test(prompt)) {
-        throw new Error(
-          `A questão ${number} não está no formato objetivo.`
-        );
-      }
-
-      if (
-        !Array.isArray(question.options) ||
-        question.options.length !== 4
-      ) {
-        throw new Error(
-          `A questão ${number} precisa ter quatro alternativas.`
-        );
-      }
-
-      const letters = ["A", "B", "C", "D"];
-
-      const options = question.options.map((option, optionIndex) => ({
-        letter: letters[optionIndex],
-        text: String(
-          typeof option === "string" ? option : option.text || ""
-        ).trim(),
-      }));
-
-      if (options.some((option) => !option.text)) {
-        throw new Error(
-          `A questão ${number} possui alternativa vazia.`
-        );
-      }
-
-      const answerLetter = String(
-        question.answerLetter || ""
-      )
-        .trim()
-        .toUpperCase();
-
-      if (!letters.includes(answerLetter)) {
-        throw new Error(
-          `A questão ${number} não possui alternativa correta válida.`
-        );
-      }
-
-      const correctOption = options.find(
-        (option) => option.letter === answerLetter
-      );
-
-      if (!correctOption) {
-        throw new Error(
-          `A resposta da questão ${number} não foi encontrada.`
-        );
-      }
-
-      return {
-        number,
-        type: "objetiva",
-        prompt,
-        options,
-        answerLetter,
-        answer: `${answerLetter}) ${correctOption.text}`,
-        explanation: String(question.explanation || "").trim(),
-        visualSupport: String(question.visualSupport || "").trim(),
-      };
+    if (visual && typeof visual === 'object') {
+      kind = normalize(visual.kind || visual.type || '');
+    } else if (typeof visual === 'string') {
+      const firstWord = normalize(visual).split(/\s+/)[0];
+      if (ALLOWED_ILLUSTRATION_KINDS.has(firstWord)) kind = firstWord;
     }
 
-    const answer = String(question.answer || "").trim();
-
-    if (isGenericAnswer(answer)) {
-      throw new Error(
-        `O gabarito da questão ${number} veio genérico.`
+    if (!ALLOWED_ILLUSTRATION_KINDS.has(kind)) {
+      kind = chooseIllustrationKind(
+        typeof visual === 'string' ? visual : q.prompt,
+        request.subject,
+        request.topic,
+        index
       );
     }
 
-    return {
-      number,
-      type: "discursiva",
-      prompt,
-      options: null,
-      answerLetter: null,
-      answer,
-      explanation: String(question.explanation || "").trim(),
-      visualSupport: String(question.visualSupport || "").trim(),
+    q.illustration = {
+      kind,
+      count: 1,
+      label: '',
+      caption: ''
     };
   });
 
+  return activity;
+}
+
+function normalizeQuestionType(value = '') {
+  const v = normalize(value);
+  if (v.includes('objet')) return 'objetiva';
+  if (v.includes('disc')) return 'discursiva';
+  return 'mista';
+}
+
+function objective(prompt, options, correctOption, visualSupport = '') {
+  return { type: 'objective', prompt, options, correctOption, expectedAnswer: '', visualSupport };
+}
+
+function discursive(prompt, expectedAnswer, visualSupport = '') {
+  return { type: 'discursive', prompt, options: [], correctOption: '', expectedAnswer, visualSupport };
+}
+
+const pronounObjectives = [
+  objective('Qual palavra é um pronome pessoal?', ['casa', 'ele', 'bonita', 'correr'], 'B'),
+  objective('Na frase “Maria chegou cedo. Ela trouxe os livros.”, qual palavra substitui Maria?', ['cedo', 'livros', 'ela', 'trouxe'], 'C'),
+  objective('Complete corretamente: “_____ estudamos juntos todos os dias.”', ['Nós', 'Nosso', 'Minha', 'Aquele'], 'A'),
+  objective('Qual alternativa contém um pronome possessivo?', ['meu', 'ontem', 'menino', 'estudar'], 'A'),
+  objective('Em “Este caderno é novo”, a palavra “Este” é um pronome:', ['pessoal', 'demonstrativo', 'indefinido', 'interrogativo'], 'B'),
+  objective('Complete: “A professora chamou Pedro e _____.”', ['eu', 'mim', 'meu', 'nós'], 'B'),
+  objective('Qual pronome indica uma pessoa de modo indefinido?', ['alguém', 'eu', 'este', 'meu'], 'A'),
+  objective('Na frase “O livro que comprei é interessante”, “que” funciona como pronome:', ['possessivo', 'relativo', 'pessoal', 'demonstrativo'], 'B'),
+  objective('Qual frase usa corretamente um pronome pessoal?', ['Mim fui à escola.', 'Eu fui à escola.', 'Meu fui à escola.', 'Este fui à escola.'], 'B'),
+  objective('Complete: “João e Ana trouxeram _____ materiais.”', ['seus', 'ele', 'este', 'ninguém'], 'A'),
+  objective('Qual alternativa apresenta apenas pronomes pessoais?', ['eu, tu, ele', 'meu, seu, nosso', 'este, esse, aquele', 'alguém, ninguém, tudo'], 'A'),
+  objective('Em “Aquela mochila é da professora”, “Aquela” indica:', ['posse', 'uma pessoa', 'localização/distância', 'uma ação'], 'C'),
+  objective('Complete corretamente: “_____ é a sua professora?”', ['Quem', 'Meu', 'Ela', 'Nosso'], 'A'),
+  objective('Qual pronome pode substituir “os alunos” sem mudar o sentido?', ['eles', 'ela', 'nós', 'eu'], 'A'),
+  objective('Na frase “Nossa turma venceu”, “Nossa” indica:', ['tempo', 'posse', 'ação', 'lugar'], 'B')
+];
+
+const pronounDiscursives = [
+  discursive('O que são pronomes?', 'Pronomes são palavras que substituem ou acompanham os substantivos, ajudando a evitar repetições e a indicar pessoas, posse, localização ou outras relações.'),
+  discursive('Reescreva “Maria chegou. Maria abriu o caderno.” evitando a repetição do nome Maria.', 'Maria chegou. Ela abriu o caderno.'),
+  discursive('Cite três pronomes pessoais.', 'Resposta possível: eu, tu e ele. Também são válidos: ela, nós, vós, eles e elas.'),
+  discursive('Explique o que indica um pronome possessivo e dê um exemplo.', 'O pronome possessivo indica posse ou pertencimento. Exemplo: meu caderno, sua mochila ou nossa escola.'),
+  discursive('Crie uma frase usando um pronome demonstrativo.', 'Resposta possível: Este livro é muito interessante. Também são aceitas frases corretas com esse, essa, aquele, aquela e formas semelhantes.'),
+  discursive('Substitua “Pedro e Lucas” por um pronome na frase “Pedro e Lucas estudam juntos”.', 'Eles estudam juntos.'),
+  discursive('Identifique o pronome na frase “Ela trouxe seu estojo”.', 'Os pronomes são “Ela” (pronome pessoal) e “seu” (pronome possessivo).'),
+  discursive('Explique por que usamos pronomes em um texto.', 'Usamos pronomes para substituir ou acompanhar nomes, evitar repetições e tornar o texto mais claro e organizado.'),
+  discursive('Escreva uma frase com um pronome indefinido.', 'Resposta possível: Alguém deixou um livro na mesa. São aceitas outras frases corretas com alguém, ninguém, tudo, nada, muitos etc.'),
+  discursive('Qual pronome pode substituir “Ana” na frase “Ana fez a tarefa”? Reescreva a frase.', 'O pronome é “ela”. Frase: Ela fez a tarefa.')
+];
+
+function mathBank(topic) {
+  const t = normalize(topic);
+  const bank = [];
+  const op = t.includes('multip') ? 'multiplicacao' : t.includes('subtr') ? 'subtracao' : 'adicao';
+  for (let i = 1; i <= 30; i++) {
+    let a = 8 + i, b = 2 + (i % 8), answer, symbol;
+    if (op === 'multiplicacao') { answer = a * b; symbol = '×'; }
+    else if (op === 'subtracao') { a += 20; answer = a - b; symbol = '−'; }
+    else { answer = a + b; symbol = '+'; }
+    const wrong = [answer + 1, Math.max(0, answer - 1), answer + b];
+    const options = [String(answer), ...wrong.map(String)];
+    const shift = i % 4;
+    const rotated = options.slice(shift).concat(options.slice(0, shift));
+    const correctOption = 'ABCD'[rotated.indexOf(String(answer))];
+    bank.push(objective(`Calcule: ${a} ${symbol} ${b} =`, rotated, correctOption));
+  }
+  return bank;
+}
+
+function createLocalActivity(request) {
+  const subject = normalize(request.subject);
+  const topic = normalize(request.topic);
+  const quantity = Number(request.quantity) || 10;
+  const type = normalizeQuestionType(request.questionType);
+  let obj = [], disc = [];
+
+  if ((subject.includes('portugues') || subject.includes('lingua')) && topic.includes('pronome')) {
+    obj = pronounObjectives;
+    disc = pronounDiscursives;
+  } else if (subject.includes('matemat') && /(adicao|soma|subtracao|multiplicacao)/.test(topic)) {
+    obj = mathBank(topic);
+    disc = obj.slice(0, 10).map((q, i) => discursive(
+      `Resolva e registre como pensou: ${q.prompt.replace('Calcule: ', '')}`,
+      `Resultado correto: ${q.options['ABCD'.indexOf(q.correctOption)]}. O aluno pode apresentar cálculo, decomposição ou outra estratégia correta.`
+    ));
+  } else {
+    return null;
+  }
+
+  let questions;
+  if (type === 'objetiva') questions = Array.from({ length: quantity }, (_, i) => ({ ...obj[i % obj.length] }));
+  else if (type === 'discursiva') questions = Array.from({ length: quantity }, (_, i) => ({ ...disc[i % disc.length] }));
+  else {
+    const objCount = Math.ceil(quantity / 2);
+    questions = [
+      ...Array.from({ length: objCount }, (_, i) => ({ ...obj[i % obj.length] })),
+      ...Array.from({ length: quantity - objCount }, (_, i) => ({ ...disc[i % disc.length] }))
+    ];
+  }
+
   return {
-    title: String(
-      activity.title ||
-        `Atividade de ${data.subject}: ${data.topic}`
-    ).trim(),
-
-    instructions: String(
-      activity.instructions ||
-        "Leia com atenção e responda às questões."
-    ).trim(),
-
-    subject: data.subject,
-    grade: data.grade,
-    difficulty: data.difficulty,
+    title: `Atividade de ${request.subject} — ${request.topic}`,
+    instructions: type === 'discursiva' ? 'Leia com atenção e responda com clareza.' : type === 'objetiva' ? 'Leia cada questão e marque apenas uma alternativa.' : 'Leia com atenção e responda conforme o tipo de cada questão.',
     questions,
+    source: 'local'
   };
 }
 
-async function generateWithGemini(data, apiKey) {
-  const model =
-    process.env.GEMINI_MODEL || "gemini-2.0-flash";
+function createUniversalFallback(request) {
+  const quantity = Number(request.quantity) || 10;
+  const type = normalizeQuestionType(request.questionType);
+  const subject = String(request.subject || 'Conteúdo').trim();
+  const topic = String(request.topic || 'Tema').trim();
+  const grade = String(request.grade || 'Ano escolar').trim();
 
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/` +
-    `${model}:generateContent?key=${apiKey}`;
+  const baseObjective = [
+    objective(`Qual é o tema principal desta atividade?`, [subject, topic, grade, 'Nenhuma das alternativas'], 'B'),
+    objective(`A qual disciplina esta atividade pertence?`, [topic, grade, subject, 'Educação Física'], 'C'),
+    objective(`Para qual ano escolar a atividade foi preparada?`, [grade, subject, topic, 'Não informado'], 'A'),
+    objective(`Qual alternativa repete corretamente o tema informado?`, [`${topic}`, `${subject}`, `${grade}`, 'Outro conteúdo'], 'A'),
+    objective(`Qual informação indica o conteúdo que será estudado?`, ['O nome do aluno', 'A data', `O tema “${topic}”`, 'A assinatura'], 'C'),
+    objective(`Em qual campo aparece “${subject}”?`, ['Disciplina', 'Ano escolar', 'Tema', 'Data'], 'A'),
+    objective(`Em qual campo aparece “${grade}”?`, ['Tema', 'Ano escolar', 'Professor', 'Aluno'], 'B'),
+    objective(`Qual opção reúne corretamente disciplina e tema?`, [`${subject} — ${topic}`, `${grade} — ${subject}`, `${topic} — ${grade}`, 'Aluno — Data'], 'A'),
+    objective(`O objetivo da atividade é estudar principalmente:`, [grade, topic, subject, 'o nome do professor'], 'B'),
+    objective(`Antes de responder, o aluno deve observar principalmente:`, ['o título e os enunciados', 'somente a data', 'somente o nome da escola', 'apenas o rodapé'], 'A')
+  ];
 
-  const response = await fetch(url, {
-    method: "POST",
+  const baseDiscursive = [
+    discursive(`Escreva qual é o tema principal desta atividade.`, topic),
+    discursive(`Informe a disciplina desta atividade.`, subject),
+    discursive(`Informe o ano escolar para o qual a atividade foi preparada.`, grade),
+    discursive(`Copie corretamente o título do tema estudado.`, topic),
+    discursive(`Complete: Esta atividade pertence à disciplina de ________.`, subject),
+    discursive(`Complete: O conteúdo principal é ________.`, topic),
+    discursive(`Complete: A atividade foi preparada para o ________.`, grade),
+    discursive(`Escreva disciplina e tema no formato “Disciplina — Tema”.`, `${subject} — ${topic}`),
+    discursive(`Qual informação do cabeçalho indica o conteúdo estudado?`, `O tema: ${topic}.`),
+    discursive(`Qual informação do cabeçalho indica a área de conhecimento?`, `A disciplina: ${subject}.`)
+  ];
 
-    headers: {
-      "Content-Type": "application/json",
-    },
+  let questions;
+  if (type === 'objetiva') {
+    questions = Array.from({ length: quantity }, (_, i) => ({ ...baseObjective[i % baseObjective.length] }));
+  } else if (type === 'discursiva') {
+    questions = Array.from({ length: quantity }, (_, i) => ({ ...baseDiscursive[i % baseDiscursive.length] }));
+  } else {
+    const objectiveCount = Math.ceil(quantity / 2);
+    questions = [
+      ...Array.from({ length: objectiveCount }, (_, i) => ({ ...baseObjective[i % baseObjective.length] })),
+      ...Array.from({ length: quantity - objectiveCount }, (_, i) => ({ ...baseDiscursive[i % baseDiscursive.length] }))
+    ];
+  }
 
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: buildPrompt(data),
-            },
-          ],
-        },
-      ],
+  return {
+    title: `Atividade de ${subject} — ${topic}`,
+    instructions: type === 'objetiva'
+      ? 'Leia cada questão e marque apenas uma alternativa.'
+      : type === 'discursiva'
+        ? 'Leia com atenção e responda com clareza.'
+        : 'Leia com atenção e responda conforme o tipo de cada questão.',
+    questions,
+    source: 'local-fallback'
+  };
+}
 
-      generationConfig: {
-        temperature: 0.3,
-        responseMimeType: "application/json",
-      },
-    }),
+function validateActivity(activity, request) {
+  if (!activity || !Array.isArray(activity.questions)) throw new Error('A geração não devolveu uma lista válida de questões.');
+  if (activity.questions.length !== Number(request.quantity)) throw new Error('A quantidade de questões retornada está incorreta.');
+  const requestedType = normalizeQuestionType(request.questionType);
+
+  activity.questions.forEach((q, index) => {
+    q.number = index + 1;
+    if (!q.prompt || !q.type) throw new Error(`Questão ${index + 1} incompleta.`);
+    if (q.type === 'objective') {
+      if (OBJECTIVE_FORBIDDEN.test(q.prompt)) throw new Error(`A questão ${index + 1} está discursiva, apesar de ser objetiva.`);
+      if (!Array.isArray(q.options) || q.options.length !== 4) throw new Error(`A questão ${index + 1} deve possuir quatro alternativas.`);
+      q.options = q.options.map(cleanOptionText);
+      if (new Set(q.options.map(normalize)).size !== 4) throw new Error(`A questão ${index + 1} possui alternativas repetidas.`);
+      if (!['A', 'B', 'C', 'D'].includes(q.correctOption)) throw new Error(`A questão ${index + 1} não possui alternativa correta válida.`);
+      const answerText = cleanOptionText(q.options['ABCD'.indexOf(q.correctOption)]);
+      if (!answerText) throw new Error(`O gabarito da questão ${index + 1} está vazio.`);
+      q.expectedAnswer = '';
+      q.answer = `${q.correctOption}) ${answerText}`;
+    } else if (q.type === 'discursive') {
+      q.options = [];
+      q.correctOption = '';
+      if (!q.expectedAnswer || normalize(q.expectedAnswer).includes('resposta coerente')) throw new Error(`A questão ${index + 1} não possui resposta esperada específica.`);
+      q.answer = q.expectedAnswer;
+    } else throw new Error(`A questão ${index + 1} possui tipo inválido.`);
   });
 
-  const result = await response.json();
-
-  if (!response.ok) {
-    console.error("Erro retornado pelo Gemini:", result);
-
-    throw new Error(
-      result?.error?.message ||
-        "O Gemini não conseguiu gerar a atividade."
-    );
+  if (requestedType === 'objetiva' && activity.questions.some(q => q.type !== 'objective')) throw new Error('Foram retornadas questões discursivas em uma atividade objetiva.');
+  if (requestedType === 'discursiva' && activity.questions.some(q => q.type !== 'discursive')) throw new Error('Foram retornadas questões objetivas em uma atividade discursiva.');
+  if (requestedType === 'mista' && Number(request.quantity) > 1) {
+    if (!activity.questions.some(q => q.type === 'objective') || !activity.questions.some(q => q.type === 'discursive')) throw new Error('A atividade mista deve conter questões objetivas e discursivas.');
   }
 
-  const text =
-    result?.candidates?.[0]?.content?.parts?.[0]?.text;
+  activity.subject = request.subject;
+  activity.grade = request.grade;
+  activity.difficulty = request.difficulty;
+  return applyIllustrations(activity, request);
+}
 
-  if (!text) {
-    throw new Error("O Gemini retornou uma resposta vazia.");
+function buildPrompt(request, correction = '') {
+  const type = normalizeQuestionType(request.questionType);
+  const typeRules = type === 'objetiva'
+    ? 'Todas as questões devem ser objetivas, com exatamente quatro alternativas A, B, C e D, somente uma correta, e enunciados que possam ser respondidos escolhendo uma alternativa. Não use explique, justifique, comente, descreva ou discorra.'
+    : type === 'discursiva'
+      ? 'Todas as questões devem ser discursivas e sem alternativas. Cada expectedAnswer deve trazer a resposta correta, específica e completa, nunca uma frase genérica.'
+      : 'Misture questões objetivas e discursivas. As objetivas devem ter quatro alternativas e uma correta. As discursivas devem ter resposta esperada específica.';
+
+  return `Crie uma atividade escolar em português do Brasil.\n\nDADOS OBRIGATÓRIOS\n- Matéria: ${request.subject}\n- Ano escolar: ${request.grade}\n- Tema: ${request.topic}\n- Quantidade exata: ${request.quantity}\n- Dificuldade: ${request.difficulty}\n- Tipo: ${request.questionType}\n\nREGRAS OBRIGATÓRIAS\n- ${typeRules}\n- Respeite exatamente o ano escolar informado.\n- Não entregue respostas vagas, como “resposta coerente”, “resposta pessoal” ou “de acordo com o aluno”.\n- Toda resposta do gabarito deve ser verificável e diretamente relacionada à questão.\n- Evite questões repetidas.\n- Em objective: options tem 4 textos sem letras, números ou prefixos no início; não escreva A), B), C), D), (A), (B), (C) ou (D) dentro de options; correctOption é A, B, C ou D; expectedAnswer é vazio.\n- Em discursive: options é []; correctOption é vazio; expectedAnswer contém uma resposta-modelo específica.\n- Ilustrações solicitadas: ${request.illustrations || 'none'}.
+- Quando as ilustrações estiverem ativadas, visualSupport deve conter APENAS um destes nomes: apple, flower, sun, cloud, fish, butterfly, tree, house, book, pencil, planet, heart, triangle, square, circle, ball ou star.
+- Escolha um desenho relacionado ao conteúdo de cada questão. Quando as ilustrações estiverem desativadas, visualSupport deve ser vazio.\n- Orientações extras: ${request.extraInstructions || 'nenhuma'}.\n${correction ? `CORRIJA A TENTATIVA ANTERIOR: ${correction}` : ''}`;
+}
+
+const responseSchema = {
+  type: 'object', required: ['title', 'instructions', 'questions'], properties: {
+    title: { type: 'string' }, instructions: { type: 'string' }, questions: {
+      type: 'array', items: { type: 'object', required: ['type', 'prompt', 'options', 'correctOption', 'expectedAnswer', 'visualSupport'], properties: {
+        type: { type: 'string', enum: ['objective', 'discursive'] }, prompt: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, correctOption: { type: 'string' }, expectedAnswer: { type: 'string' }, visualSupport: { type: 'string' }
+      }}
+    }
   }
+};
 
-  return JSON.parse(removeMarkdown(text));
+async function callGemini(key, request, correction = '') {
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+  const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: buildPrompt(request, correction) }] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema, temperature: 0.35, maxOutputTokens: 8192 }
+  })});
+  if (!response.ok) throw new Error(`Gemini ${response.status}: ${(await response.text()).slice(0, 500)}`);
+  const output = await response.json();
+  const text = output?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
+  if (!text) throw new Error('O Gemini não retornou conteúdo.');
+  return JSON.parse(text.replace(/^```json\s*/i, '').replace(/\s*```$/, ''));
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Método não permitido.",
-    });
-  }
-
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
   try {
-    const body = parseBody(req.body);
+    const data = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (!data?.subject || !data?.grade || !data?.topic || !data?.quantity) return res.status(400).json({ error: 'Preencha todos os dados obrigatórios.' });
+    const key = process.env.GEMINI_API_KEY;
+    let lastError = '';
 
-    const quantity = Math.min(
-      Math.max(
-        Number.parseInt(
-          body.quantity || body.quantidade,
-          10
-        ) || 10,
-        1
-      ),
-      30
-    );
-
-    const data = {
-      subject: String(
-        body.subject || body.materia || ""
-      ).trim(),
-
-      grade: String(
-        body.grade || body.ano || ""
-      ).trim(),
-
-      topic: String(
-        body.topic || body.tema || ""
-      ).trim(),
-
-      difficulty: String(
-        body.difficulty ||
-          body.dificuldade ||
-          "Média"
-      ).trim(),
-
-      questionType: normalizeType(
-        body.questionType ||
-          body.tipo ||
-          "objetiva"
-      ),
-
-      illustrations: String(
-        body.illustrations ||
-          body.ilustracoes ||
-          "none"
-      ).trim(),
-
-      autism: String(
-        body.autism ||
-          body.autismo ||
-          "no"
-      ).trim(),
-
-      quantity,
-    };
-
-    if (!data.subject || !data.grade || !data.topic) {
-      return res.status(400).json({
-        error:
-          "Preencha matéria, ano escolar e tema.",
-      });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(503).json({
-        error:
-          "O gerador ainda não está configurado.",
-      });
-    }
-
-    let lastError;
-
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      try {
-        const generated = await generateWithGemini(
-          data,
-          apiKey
-        );
-
-        const validated = validateActivity(
-          generated,
-          data
-        );
-
-        return res.status(200).json(validated);
-      } catch (error) {
-        lastError = error;
-
-        console.error(
-          `Tentativa ${attempt} falhou:`,
-          error
-        );
+    if (key) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try { return res.status(200).json(validateActivity(await callGemini(key, data, lastError), data)); }
+        catch (error) { lastError = error.message; }
       }
     }
-  
 
-    return res.status(500).json({
-      error:
-        lastError?.message ||
-        "Não foi possível gerar uma atividade válida.",
-    });
+    const local = createLocalActivity(data) || createUniversalFallback(data);
+    return res.status(200).json(validateActivity(local, data));
   } catch (error) {
-    console.error("Erro geral:", error);
-
-    return res.status(500).json({
-      error: "Erro ao gerar atividade.",
-    });
+    console.error(error);
+    return res.status(500).json({ error: 'Ocorreu um erro ao montar a atividade. Tente novamente.' });
   }
 }
